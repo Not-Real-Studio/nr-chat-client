@@ -5,7 +5,7 @@
  * (только `import type`: в рантайм протокол не едет).
  */
 
-export { createClient, toRunInput, type ChatClient, type ClientOpts, type RunInput, type RunOpts } from './client.js'
+export { clientOf, createClient, toRunInput, type ChatClient, type ClientOpts, type RunInput, type RunOpts } from './client.js'
 export { createHttpBackend, type HttpBackendOpts } from './http-backend.js'
 export {
   BackendError,

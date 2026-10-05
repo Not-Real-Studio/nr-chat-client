@@ -27,6 +27,10 @@ const end = await chat.run(s.id, 'привет', { onEvent: (ev) => ev.type === 
 | `cancel(sid, runId)`, `profiles()`, `models()`, `close()` | |
 | `backend` | `ProtocolBackend` целиком (правки, свайпы, вложения, файлы, сервисы) |
 
+`clientOf(backend, baseUrl = 'local')` — тот же клиент поверх любого `ProtocolBackend`
+(бэкенд в процессе страницы — `createLocalBackend` из `backend-nr/browser`, виджет
+`backend="local"`).
+
 `createHttpBackend(url, opts)` — полный `ProtocolBackend` поверх HTTP (тот же, что был в `backend-http/client`; backend-http реэкспортирует его отсюда). Ошибки: `BackendError {code, status}`, `NotSupportedError` (`err instanceof NotSupportedError` протокола ≥0.27 верно и для него).
 
 ## Ключ доступа

@@ -1,6 +1,6 @@
 {
   "name": "@notrealstudio/nr-chat-client",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Тонкий клиент nr-ui-protocol без зависимостей: createClient (сессии, ран по SSE через fetch, respond/cancel, профили, модели, auth) и createHttpBackend (ProtocolBackend поверх HTTP). Браузер и Node.",
   "license": "MIT",
   "type": "module",

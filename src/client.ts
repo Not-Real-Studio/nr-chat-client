@@ -100,6 +100,15 @@ export function createClient(baseUrl: string, opts: ClientOpts = {}): ChatClient
     ...(opts.auth ? { auth: opts.auth } : {}),
     ...(opts.capabilitiesTtl !== undefined ? { capabilitiesTtl: opts.capabilitiesTtl } : {}),
   })
+  return clientOf(backend, baseUrl)
+}
+
+/**
+ * Тот же клиент поверх любого `ProtocolBackend` (DEV-226): бэкенд в процессе
+ * страницы (`backend-nr/browser` `createLocalBackend`, виджет `backend="local"`)
+ * или свой транспорт. `baseUrl` — только метка (`local`).
+ */
+export function clientOf(backend: ProtocolBackend, baseUrl = 'local'): ChatClient {
 
   async function* stream(sid: string, input: RunInput, o: Omit<RunOpts, 'onEvent'> = {}): AsyncGenerator<AnyRunEvent> {
     const signal = o.signal
