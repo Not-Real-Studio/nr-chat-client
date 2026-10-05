@@ -17,3 +17,4 @@ export {
   parseSSEStream,
   type WireEnvelope,
 } from './wire.js'
+export { joinStart, stripName } from './text.js'
