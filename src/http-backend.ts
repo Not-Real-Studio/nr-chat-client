@@ -44,6 +44,11 @@ import type {
   SessionMetaPatch,
   SessionModel,
   ServiceEvent,
+  SkinInfo,
+  SkinSaveOpts,
+  SkinSaveResult,
+  SkinSelection,
+  SkinsListOpts,
   SwipeTo,
   WorkspaceInfo,
 } from '@notrealstudio/nr-ui-protocol'
@@ -359,6 +364,39 @@ export function createHttpBackend(url: string, opts: HttpBackendOpts = {}): Prot
       },
       async asset(botId: string, file: string): Promise<AssetData> {
         return fetchAsset(botId, file)
+      },
+    },
+
+    // skin-spec §5 (v1.21): список и собранный CSS; незаявленное приезжает not_supported.
+    skins: {
+      async list(o?: SkinsListOpts): Promise<SkinInfo[]> {
+        return (await call<SkinInfo[]>('GET', `/skins${query({ session: o?.sessionId })}`)).result
+      },
+      async css(name: string, o?: SkinsListOpts): Promise<string> {
+        ensureOpen()
+        const path = `/skins/${enc(name)}.css${query({ session: o?.sessionId })}`
+        let res: Response
+        try {
+          res = await doFetch(`${base}${path}`, { headers: await buildHeaders({ accept: 'text/css' }), signal: lifetime.signal })
+        } catch (err) {
+          throw new BackendError(`GET ${path}: ${errorMessage(err)}`, CODE_CONNECTION_LOST)
+        }
+        const text = await res.text()
+        if (res.ok) return text
+        let envelope: WireEnvelope<never> | null = null
+        try {
+          envelope = JSON.parse(text) as WireEnvelope<never>
+        } catch {
+          /* не Envelope */
+        }
+        if (envelope && envelope.ok === false) throw toError(envelope, res.status)
+        throw new BackendError(`GET ${path}: HTTP ${res.status}`, undefined, res.status)
+      },
+      async save(name: string, css: string, o?: SkinSaveOpts): Promise<SkinSaveResult> {
+        return (await call<SkinSaveResult>('PUT', `/skins/${enc(name)}.css`, { css, ...(o ?? {}) })).result
+      },
+      async select(sel: SkinSelection): Promise<void> {
+        await call<void>('PUT', '/skins/current', sel)
       },
     },
 
