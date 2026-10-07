@@ -82,6 +82,14 @@ export interface HttpBackendOpts {
    * главнее.
    */
   auth?: string
+  /**
+   * Сторож тишины вечных стримов (`services.stream`, `/workspace/events`;
+   * DEV-243): сервер шлёт `: ping` раз в 25 с — нет ни байта дольше, чем
+   * столько мс, — соединение считается мёртвым (рестарт бэкенда за туннелем,
+   * сон машины): стрим сервиса кончается кадром `connection_lost`, канал файлов
+   * переподключается. Default 60 000; `0` — без сторожа.
+   */
+  idleTimeoutMs?: number
 }
 
 
@@ -111,6 +119,7 @@ export function createHttpBackend(url: string, opts: HttpBackendOpts = {}): Prot
     throw new Error('createHttpBackend: fetch недоступен — передай opts.fetch')
   }
   const doFetch: typeof globalThis.fetch = maybeFetch
+  const idleMs = opts.idleTimeoutMs ?? STREAM_IDLE_MS
 
   /** Общий abort: close() рвёт все живые запросы и стримы. */
   const lifetime = new AbortController()
@@ -558,7 +567,7 @@ export function createHttpBackend(url: string, opts: HttpBackendOpts = {}): Prot
         let buffer = ''
         try {
           for (;;) {
-            const chunk = await reader.read()
+            const chunk = await readIdle(reader, idleMs)
             if (chunk.done) break
             buffer += decoder.decode(chunk.value, { stream: true }).replace(/\r\n/g, '\n')
             let cut: number
@@ -644,7 +653,7 @@ export function createHttpBackend(url: string, opts: HttpBackendOpts = {}): Prot
         for (;;) {
           let chunk: ReadableStreamReadResult<Uint8Array>
           try {
-            chunk = await reader.read()
+            chunk = await readIdle(reader, idleMs)
           } catch (err) {
             if (signal.aborted) return
             yield serviceErrorEvent(err, CODE_CONNECTION_LOST)
@@ -762,6 +771,19 @@ export function createHttpBackend(url: string, opts: HttpBackendOpts = {}): Prot
 // ────────────────────────────────────────────────────────────────────────────
 
 const enc = encodeURIComponent
+
+/** Тишина вечного стрима дольше — соединение мёртвое (сервер пингует раз в 25 с). */
+const STREAM_IDLE_MS = 60_000
+
+/** `reader.read()` со сторожем тишины: `ms` без байта — throw (`0` — без сторожа). */
+function readIdle(reader: ReadableStreamDefaultReader<Uint8Array>, ms: number): Promise<ReadableStreamReadResult<Uint8Array>> {
+  if (!(ms > 0)) return reader.read()
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const idle = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`stream idle ${Math.round(ms / 1000)} s — heartbeat lost`)), ms)
+  })
+  return Promise.race([reader.read(), idle]).finally(() => clearTimeout(timer))
+}
 
 /** Первая пауза переподключения канала `/workspace/events`, мс; дальше — удвоение. */
 const WATCH_BACKOFF_MS = 500
