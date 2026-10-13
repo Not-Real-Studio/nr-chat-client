@@ -11,6 +11,9 @@
  */
 
 import type {
+  SessionListOpts,
+  WorkspaceProject,
+  WorkspaceProjectPatch,
   AnyRunEvent,
   AssetData,
   FileContent,
@@ -210,8 +213,9 @@ export function createHttpBackend(url: string, opts: HttpBackendOpts = {}): Prot
     },
 
     sessions: {
-      async list(): Promise<SessionInfo[]> {
-        return (await call<SessionInfo[]>('GET', '/sessions')).result
+      async list(listOpts?: SessionListOpts): Promise<SessionInfo[]> {
+        // v1.26: сессии проекта — ?workspace=; без него — все.
+        return (await call<SessionInfo[]>('GET', `/sessions${query({ workspace: listOpts?.workspace })}`)).result
       },
       async create(createOpts?: SessionCreateOpts): Promise<SessionInfo> {
         return (await call<SessionInfo>('POST', '/sessions', createOpts ?? {})).result
@@ -309,6 +313,13 @@ export function createHttpBackend(url: string, opts: HttpBackendOpts = {}): Prot
       },
       async switch(id: string): Promise<WorkspaceInfo> {
         return (await call<WorkspaceInfo>('POST', '/workspace', { id })).result
+      },
+      // Проекты (v1.26, capability workspace.edit): реестр стенда формой.
+      async create(project: WorkspaceProject & { id?: string }): Promise<WorkspaceInfo> {
+        return (await call<WorkspaceInfo>('POST', '/workspaces', project)).result
+      },
+      async update(id: string, patch: WorkspaceProjectPatch): Promise<WorkspaceInfo> {
+        return (await call<WorkspaceInfo>('PATCH', `/workspaces/${enc(id)}`, patch)).result
       },
 
       // files (workspace-files-spec §1): все методы всегда; незаявленное
