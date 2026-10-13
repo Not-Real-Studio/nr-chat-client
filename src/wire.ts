@@ -8,7 +8,7 @@
  * `instanceof` (name + code, протокол ≥0.27).
  */
 
-import type { AnyRunEvent, ServiceEvent, WorkspaceUpdateEvent } from '@notrealstudio/nr-ui-protocol'
+import type { AnyRunEvent, ServiceEvent, WorkspaceUpdateEvent, PluginChangedEvent } from '@notrealstudio/nr-ui-protocol'
 
 /** Envelope §4 на проводе: + `code` ошибки. */
 export interface WireEnvelope<T> {
@@ -110,6 +110,13 @@ export function parseWorkspaceEvent(frame: string): WorkspaceUpdateEvent | null 
   const v = parseRunEvent(frame) as unknown as { type?: unknown; paths?: unknown } | null
   if (!v || v.type !== 'workspace_update' || !Array.isArray(v.paths) || !v.paths.every((p) => typeof p === 'string')) return null
   return { type: 'workspace_update', paths: [...(v.paths as string[])] }
+}
+
+/** Кадр `/plugins/events` → `plugin_changed` (v1.24); чужой — `null`. */
+export function parsePluginEvent(frame: string): PluginChangedEvent | null {
+  const v = parseRunEvent(frame) as unknown as { type?: unknown; id?: unknown; version?: unknown } | null
+  if (!v || v.type !== 'plugin_changed' || typeof v.id !== 'string' || v.id === '') return null
+  return { type: 'plugin_changed', id: v.id, ...(typeof v.version === 'string' ? { version: v.version } : {}) }
 }
 
 export type ServiceFrame = { type: 'event'; event: ServiceEvent } | { type: 'end' }

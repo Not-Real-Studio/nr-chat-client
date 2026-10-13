@@ -60,6 +60,7 @@ import {
   errorMessage,
   parseSSEStream,
   parseServiceFrame,
+  parsePluginEvent,
   parseWorkspaceEvent,
   serviceErrorEvent,
   type WireEnvelope,
@@ -133,6 +134,22 @@ export function createHttpBackend(url: string, opts: HttpBackendOpts = {}): Prot
     return { ...auth, ...base, ...extra }
   }
 
+  /**
+   * Адреса внешних плагинов (v1.24) — абсолютными: на проводе они от базы
+   * бэкенда, а `import()` и `<link>` во фронте резолвятся от страницы. Ключ —
+   * в `?auth=`: модулю заголовок не поставить.
+   */
+  function absolute(rel: string): string {
+    const url = /^[a-z][a-z0-9+.-]*:/i.test(rel) ? new URL(rel) : new URL(rel.replace(/^\/+/, ''), `${base}/`)
+    if (opts.auth && !url.searchParams.has('auth')) url.searchParams.set('auth', opts.auth)
+    return url.href
+  }
+
+  function withPluginUrls(caps: Capabilities): Capabilities {
+    if (!Array.isArray(caps.plugins)) return caps
+    return { ...caps, plugins: caps.plugins.map((p) => ({ ...p, url: absolute(p.url), ...(p.css ? { css: absolute(p.css) } : {}) })) }
+  }
+
   function ensureOpen(): void {
     if (closed) throw new Error('createHttpBackend: backend закрыт (close())')
   }
@@ -187,8 +204,9 @@ export function createHttpBackend(url: string, opts: HttpBackendOpts = {}): Prot
         return capsCache.value
       }
       const { result } = await call<Capabilities>('GET', '/capabilities')
-      capsCache = { value: result, at: Date.now() }
-      return result
+      const value = withPluginUrls(result)
+      capsCache = { value, at: Date.now() }
+      return value
     },
 
     sessions: {
@@ -377,6 +395,10 @@ export function createHttpBackend(url: string, opts: HttpBackendOpts = {}): Prot
     },
 
     // skin-spec §5 (v1.21): список и собранный CSS; незаявленное приезжает not_supported.
+    plugins: {
+      watch: (listener) => watchChannel('/plugins/events', parsePluginEvent, listener),
+    },
+
     skins: {
       async list(o?: SkinsListOpts): Promise<SkinInfo[]> {
         return (await call<SkinInfo[]>('GET', `/skins${query({ session: o?.sessionId })}`)).result
@@ -518,12 +540,21 @@ export function createHttpBackend(url: string, opts: HttpBackendOpts = {}): Prot
    * между, неизвестно. 4xx и not_supported — канала нет и не будет: без ретраев.
    */
   function watchWorkspace(listener: WorkspaceUpdateListener): () => void {
+    return watchChannel('/workspace/events', parseWorkspaceEvent, listener, (): WorkspaceUpdateEvent => ({ type: 'workspace_update', paths: [''] }))
+  }
+
+  /**
+   * Вечный SSE-канал подписки (`/workspace/events`, `/plugins/events`): фоном,
+   * обрыв и 5xx → переподключение с backoff; `reconnected` — кадр подписчику
+   * после любого подключения, кроме первого (что было между — неизвестно).
+   */
+  function watchChannel<E>(path: string, parse: (frame: string) => E | null, listener: (event: E) => void, reconnected?: () => E): () => void {
     ensureOpen()
     const ac = new AbortController()
     const onClose = () => ac.abort()
     lifetime.signal.addEventListener('abort', onClose, { once: true })
 
-    const deliver = (event: WorkspaceUpdateEvent) => {
+    const deliver = (event: E) => {
       if (ac.signal.aborted) return
       try {
         listener(event)
@@ -542,7 +573,7 @@ export function createHttpBackend(url: string, opts: HttpBackendOpts = {}): Prot
 
         let res: Response
         try {
-          res = await doFetch(`${base}/workspace/events`, {
+          res = await doFetch(`${base}${path}`, {
             method: 'GET',
             headers: await buildHeaders({ accept: 'text/event-stream' }),
             signal: ac.signal,
@@ -558,7 +589,7 @@ export function createHttpBackend(url: string, opts: HttpBackendOpts = {}): Prot
           continue
         }
 
-        if (attempt > 0) deliver({ type: 'workspace_update', paths: [''] })
+        if (attempt > 0 && reconnected) deliver(reconnected())
         attempt++
         backoff = WATCH_BACKOFF_MS
 
@@ -572,7 +603,7 @@ export function createHttpBackend(url: string, opts: HttpBackendOpts = {}): Prot
             buffer += decoder.decode(chunk.value, { stream: true }).replace(/\r\n/g, '\n')
             let cut: number
             while ((cut = buffer.indexOf('\n\n')) !== -1) {
-              const event = parseWorkspaceEvent(buffer.slice(0, cut))
+              const event = parse(buffer.slice(0, cut))
               buffer = buffer.slice(cut + 2)
               if (event) deliver(event)
             }
