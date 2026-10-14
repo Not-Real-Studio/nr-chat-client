@@ -12,6 +12,7 @@
 
 import type {
   SessionListOpts,
+  ProfilesListOpts,
   WorkspaceProject,
   WorkspaceProjectPatch,
   AnyRunEvent,
@@ -356,8 +357,9 @@ export function createHttpBackend(url: string, opts: HttpBackendOpts = {}): Prot
     // profiles (profiles-spec §4): list всегда, set — гейт `profiles.switch`;
     // незаявленный приезжает not_supported.
     profiles: {
-      async list(): Promise<ProfileInfo[]> {
-        return (await call<ProfileInfo[]>('GET', '/profiles')).result
+      // v1.27: каталог глазами проекта клиента — ?workspace=; без него — проект бэкенда.
+      async list(listOpts?: ProfilesListOpts): Promise<ProfileInfo[]> {
+        return (await call<ProfileInfo[]>('GET', `/profiles${query({ workspace: listOpts?.workspace })}`)).result
       },
       // Встроенный профиль (bot-as-session-spec §1) едет документом: {doc}, не {id}.
       async set(sessionId: string, profile: string | ProfileDoc): Promise<ProfileInfo> {
@@ -365,8 +367,8 @@ export function createHttpBackend(url: string, opts: HttpBackendOpts = {}): Prot
         return (await call<ProfileInfo>('POST', `/sessions/${enc(sessionId)}/profile`, body)).result
       },
       // Конструктор (profile-editor-spec §3): save/delete/duplicate — гейт `profiles.edit`.
-      async get(id: string): Promise<ProfileDoc> {
-        return (await call<ProfileDoc>('GET', `/profiles/${enc(id)}`)).result
+      async get(id: string, getOpts?: ProfilesListOpts): Promise<ProfileDoc> {
+        return (await call<ProfileDoc>('GET', `/profiles/${enc(id)}${query({ workspace: getOpts?.workspace })}`)).result
       },
       async save(doc: ProfileDoc): Promise<ProfileDoc> {
         return (await call<ProfileDoc>('PUT', `/profiles/${enc(doc.id)}`, doc)).result
