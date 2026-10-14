@@ -20,6 +20,8 @@ import type {
   FileContent,
   FileEntry,
   FileReadOpts,
+  FileSearchHit,
+  FileSearchQuery,
   FileWriteOpts,
   WorkspaceUpdateEvent,
   WorkspaceUpdateListener,
@@ -347,6 +349,10 @@ export function createHttpBackend(url: string, opts: HttpBackendOpts = {}): Prot
         },
         async stat(path: string): Promise<FileEntry> {
           return (await call<FileEntry>('GET', `/workspace/file/stat${query({ path })}`)).result
+        },
+        // v1.28 (DEV-295): гейт workspace.files.search.
+        async search(q: FileSearchQuery): Promise<FileSearchHit[]> {
+          return (await call<FileSearchHit[]>('POST', '/workspace/files/search', q)).result
         },
         watch(listener: WorkspaceUpdateListener): () => void {
           return watchWorkspace(listener)
